@@ -31,7 +31,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         maxseqs = int(sys.argv[1])
     else:
-        maxseqs = 10
+        maxseqs = 70
 
     region = 'p17'
     plot = False
@@ -41,16 +41,10 @@ if __name__ == '__main__':
 
     import time
 
-    versions = {'c1': cluster_force,
-                'c2': cluster_force2,
-                'c3': cluster_force3,
-               }
-
-    for version, fun in versions.iteritems():
-        print version
+    for method in ['Powell', 'BFGS', 'BFGS-jac', 'CG']:
         np.random.seed(30)
         t0 = time.time()
         for i in xrange(reps):
-            v = cluster_force(alim, plot=plot)
+            v = cluster_force(alim, plot=plot, method=method)
         t1 = time.time()
-        print reps, 'replicates run. Time per run: {:.2G} secs'.format(t1 - t0)
+        print reps, 'replicates run. Time per run: {:.2G} secs'.format((t1 - t0) / reps)

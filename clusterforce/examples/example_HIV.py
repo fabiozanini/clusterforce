@@ -36,15 +36,13 @@ if __name__ == '__main__':
 
     region = 'p17'
     plot = True
-    #method = 'Powell'
-    method = 'CG'
 
     alim = load_test_data(region=region, maxseqs=maxseqs)
     cons = get_consensus(alim)
     dcon = (alim != cons).sum(axis=1)
 
     np.random.seed(30)
-    v = cluster_force(alim, plot=plot)
+    v = cluster_force(alim, plot=plot, method='BFGS-jac')
 
 
     plt.ion()

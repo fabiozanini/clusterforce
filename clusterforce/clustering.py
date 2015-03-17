@@ -5,218 +5,149 @@ date:       17/03/15
 content:    Clustering functions
 '''
 # Modules
+import numpy as np
 
 
 # Functions
-def cluster_force(alim, method='Powell', plot=False):
-    '''Cluster sequences with physical forces
+def energy_function(v, e1, e2):
+    # NOTE: v comes in as a flattened array, but it's a 2D vector
+    N = v.shape[0] // 2
+    v = v.reshape((N, 2))
+
+    # Coefficients
+    l1 = 5e-2           # repulsion from consensus
+    l2 = 1e-4 / N       # interactions
+    l2_rep = 3.0        # -- " -- (repulsive part)
+    l2_att = 1e-2       # -- " -- (elastic attraction)
+
+    # Calculate the radius
+    r = np.sqrt((v**2).sum(axis=-1))
+
+    # Mutual distances between all points
+    a = np.zeros((N, N, 2))
+    a[:] = v
+    a -= a.swapaxes(0, 1)
+    d = np.zeros((N, N))
+    d[:] = np.sqrt((a**2).sum(axis=-1))
     
-    Paramters:
-       alim (biopython alignment or numpy matrix of chars): alignment to analyze
-       method (str): minimization method (see scipy.optimize.minimize)
-       plot (bool): plot clustering
-    '''
-    import numpy as np
-    from scipy.optimize import minimize
-
-    from .utils.sequence import get_consensus 
-
-    alim = np.asarray(alim, 'S1')
-
-    cons = get_consensus(alim)
-    N = alim.shape[0]
-    L = alim.shape[-1]
-
-    # Constant repulsor in the consensus/middle
-    l1 = 5e-2
-    e1 = (alim != cons).mean(axis=1)
-    e1_fun = lambda v, e1: -l1 * (e1 * np.sqrt((v**2).mean(axis=-1)))
-
-    # Exponential repulsor from infinity
-    ec_fun = lambda v: np.cosh(np.sqrt((v**2).mean(axis=-1)))
-
-    # The two above create a ring of minimum with a radius that depends on the
-    # divergence from consensus
-
-    # Constant repulsor and elastic attractor between the sequences
-    # This fixes a reasonable distance between points because at short distances
-    # the attraction is zero (flat energy)
-    l2 = 1e-4 / N
-    l2_rep = 3.0
-    l2_att = 1e-2
-    e2 = np.tile(alim, (alim.shape[0], 1, 1))
-    e2 = 1.0 * (e2 == e2.swapaxes(0, 1)).mean(axis=2)
-    def e2_fun(v):
-        a = np.tile(v, (v.shape[0], 1, 1))
-        d = np.sqrt(((a - a.swapaxes(0, 1))**2).sum(axis=-1))
-        e = l2 * (- l2_rep * d + l2_att * e2 * d**2)
-        return e
-
-
-    # v is the matrix with the two dimensional position vector of each sequence
-    efun = lambda v: (ec_fun(v.reshape((v.shape[0] // 2, 2))).sum() + 
-                      e1_fun(v.reshape((v.shape[0] // 2, 2)), e1).sum() +
-                      e2_fun(v.reshape((v.shape[0] // 2, 2))).sum() +
-                     0)
-
-    # Minimize the energy
-    v0 = np.random.rand(alim.shape[0], 2).ravel()
-    res = minimize(efun, v0, method=method)
-    v = res.x.reshape((v0.shape[0] // 2, 2))
-
-    if plot:
-        from matplotlib import cm
-        import matplotlib.pyplot as plt
-
-        # Plot the force field and the scatter
-        fig, axs = plt.subplots(1, 2, figsize=(13, 6))
-
-        ax = axs[0]
-        xp = np.linspace(0, 10 * np.sqrt((v**2).sum(axis=-1).max()), 200)
-        for dtmp in np.linspace(0, 1, 5):
-            vp = np.vstack([xp, np.zeros_like(xp)]).T
-            yp = e1_fun(vp, dtmp) + ec_fun(vp)
-            ax.plot(xp, yp, color=cm.jet(dtmp), lw=2)
-
-            yp = 1.0 + e1_fun(vp, dtmp)
-            ax.plot(xp, yp, color=cm.jet(dtmp), lw=2, alpha=0.3, ls='--')
-
-        yp = ec_fun(vp)
-        ax.plot(xp, yp, color='k', lw=2, alpha=0.3, ls='--')
-        ax.grid(True)
-
-
-        ax = axs[1]
-        dcon = (alim != cons).sum(axis=1)
-        colors = cm.jet(1.0 * dcon / dcon.max())
-        ax.scatter([0], [0], s=200, edgecolor='k', facecolor='none', lw=2, zorder=-1)
-        ax.scatter(v[:, 0], v[:, 1], s=40, c=colors)
-        ax.grid(True)
-        ax.set_xlim(-1.04*np.abs(v[:, 0]).max(), 1.04*np.abs(v[:, 0]).max())
-        ax.set_ylim(-1.04*np.abs(v[:, 1]).max(), 1.04*np.abs(v[:, 1]).max())
-        sm = plt.cm.ScalarMappable(cmap=cm.jet, norm=plt.Normalize(vmin=0, vmax=dcon.max()))
-        sm.set_array(dcon)
-        plt.colorbar(sm)
-        
-
-    return v
-
-
-def cluster_force2(alim, method='Powell', plot=False):
-    '''Cluster sequences with physical forces
+    # Initial level
+    e = 0
     
-    Paramters:
-       alim (biopython alignment or numpy matrix of chars): alignment to analyze
-       method (str): minimization method (see scipy.optimize.minimize)
-       plot (bool): plot clustering
-    '''
-    import numpy as np
-    from scipy.optimize import minimize
+    # Infinity trap
+    e += np.cosh(r).sum()
 
-    from .utils.sequence import get_consensus 
+    # Consensus repulsor
+    e += -l1 * (e1 * r).sum()
 
-    alim = np.asarray(alim, 'S1')
+    # Pairwise interactions (constant repulsion + harmonic oscillator)
+    e += l2 * (-l2_rep * d + l2_att * e2 * d**2).sum()
 
-    cons = get_consensus(alim)
-    N = alim.shape[0]
-    L = alim.shape[-1]
-
-    # Constant repulsor in the consensus/middle
-    l1 = 5e-2
-    e1 = (alim != cons).mean(axis=1)
-    e1_fun = lambda v, e1: -l1 * (e1 * np.sqrt((v**2).mean(axis=-1)))
-
-    # Exponential repulsor from infinity
-    ec_fun = lambda v: np.cosh(np.sqrt((v**2).mean(axis=-1)))
-
-    # The two above create a ring of minimum with a radius that depends on the
-    # divergence from consensus
-
-    # Constant repulsor and elastic attractor between the sequences
-    # This fixes a reasonable distance between points because at short distances
-    # the attraction is zero (flat energy)
-    l2 = 1e-4 / N
-    l2_rep = 3.0
-    l2_att = 1e-2
-    e2 = np.zeros((N, N), float)
-    for iseq, seq in enumerate(alim):
-        e2[iseq] = (seq == alim).mean(axis=-1)
-    d = np.zeros_like(e2)
-    def e2_fun(v):
-        for ivec, vec in enumerate(v):
-            d[ivec] = np.sqrt(((v - vec)**2).sum(axis=-1))
-        e = l2 * (- l2_rep * d + l2_att * e2 * d**2)
-        return e
+    return e
 
 
-    # v is the matrix with the two dimensional position vector of each sequence
-    efun = lambda v: (ec_fun(v.reshape((v.shape[0] // 2, 2))).sum() + 
-                      e1_fun(v.reshape((v.shape[0] // 2, 2)), e1).sum() +
-                      e2_fun(v.reshape((v.shape[0] // 2, 2))).sum() +
-                     0)
+def energy_gradient_function(v, e1, e2):
+    # NOTE: v comes in as a flattened array, but it's a 2D vector
+    N = v.shape[0] // 2
+    v = v.reshape((N, 2))
 
-    # Minimize the energy
-    v0 = np.random.rand(alim.shape[0], 2).ravel()
-    res = minimize(efun, v0, method=method)
-    v = res.x.reshape((v0.shape[0] // 2, 2))
+    # Coefficients
+    l1 = 5e-2           # repulsion from consensus
+    l2 = 1e-4 / N       # interactions
+    l2_rep = 3.0        # -- " -- (repulsive part)
+    l2_att = 1e-2       # -- " -- (elastic attraction)
 
-    if plot:
-        from matplotlib import cm
-        import matplotlib.pyplot as plt
+    # Calculate the radius
+    r = np.sqrt((v**2).sum(axis=-1))
 
-        # Plot the force field and the scatter
-        fig, axs = plt.subplots(1, 2, figsize=(13, 6))
-
-        ax = axs[0]
-        xp = np.linspace(0, 10 * np.sqrt((v**2).sum(axis=-1).max()), 200)
-        for dtmp in np.linspace(0, 1, 5):
-            vp = np.vstack([xp, np.zeros_like(xp)]).T
-            yp = e1_fun(vp, dtmp) + ec_fun(vp)
-            ax.plot(xp, yp, color=cm.jet(dtmp), lw=2)
-
-            yp = 1.0 + e1_fun(vp, dtmp)
-            ax.plot(xp, yp, color=cm.jet(dtmp), lw=2, alpha=0.3, ls='--')
-
-        yp = ec_fun(vp)
-        ax.plot(xp, yp, color='k', lw=2, alpha=0.3, ls='--')
-        ax.grid(True)
-
-
-        ax = axs[1]
-        dcon = (alim != cons).sum(axis=1)
-        colors = cm.jet(1.0 * dcon / dcon.max())
-        ax.scatter([0], [0], s=200, edgecolor='k', facecolor='none', lw=2, zorder=-1)
-        ax.scatter(v[:, 0], v[:, 1], s=40, c=colors)
-        ax.grid(True)
-        ax.set_xlim(-1.04*np.abs(v[:, 0]).max(), 1.04*np.abs(v[:, 0]).max())
-        ax.set_ylim(-1.04*np.abs(v[:, 1]).max(), 1.04*np.abs(v[:, 1]).max())
-        sm = plt.cm.ScalarMappable(cmap=cm.jet, norm=plt.Normalize(vmin=0, vmax=dcon.max()))
-        sm.set_array(dcon)
-        plt.colorbar(sm)
-        
-
-    return v
-
-
-def cluster_force3(alim, method='Powell', plot=False):
-    '''Cluster sequences with physical forces
+    # Mutual distances between all points
+    a = np.zeros((N, N, 2))
+    a[:] = v
+    a -= a.swapaxes(0, 1)
+    d = np.zeros((N, N))
+    d[:] = np.sqrt((a**2).sum(axis=-1))
     
-    Paramters:
-       alim (biopython alignment or numpy matrix of chars): alignment to analyze
-       method (str): minimization method (see scipy.optimize.minimize)
-       plot (bool): plot clustering
-    '''
-    import numpy as np
-    from scipy.optimize import minimize
+    # Initial level
+    J = np.zeros_like(v)
 
+    for ix in xrange(2):
+        for i in xrange(N):
+            g = 0
+    
+            # Infinity trap
+            #e += np.cosh(r).sum()
+            g += np.sinh(r[i]) * (v[i, ix] + 1e-10) / (r[i] + 1e-10)
+            
+            # Consensus repulsor
+            #e += -l1 * (e1 * r).sum()
+            g -= l1 * e1[i] * (v[i, ix] + 1e-10) / (r[i] + 1e-10)
+
+            # Pairwise interactions (constant repulsion + harmonic oscillator)
+            #e += l2 * (-l2_rep * d + l2_att * e2 * d**2).sum()
+            for j in xrange(N):
+                g -= 2 * l2 * l2_rep * (v[i, ix] - v[j, ix]) / (d[i, j] + 1e-15)
+                g += 4 * l2 * l2_att * e2[i, j] * (v[i, ix] - v[j, ix])
+
+            J[i, ix] = g
+
+    return J.ravel()
+
+
+def energy_withgradient_function(v, e1, e2):
+    # NOTE: v comes in as a flattened array, but it's a 2D vector
+    N = v.shape[0] // 2
+    v = v.reshape((N, 2))
+
+    # Coefficients
+    l1 = 5e-2           # repulsion from consensus
+    l2 = 1e-4 / N       # interactions
+    l2_rep = 3.0        # -- " -- (repulsive part)
+    l2_att = 1e-2       # -- " -- (elastic attraction)
+
+    # Calculate the radius
+    r = np.sqrt((v**2).sum(axis=-1))
+
+    # Mutual distances between all points
+    a = np.zeros((N, N, 2))
+    a[:] = v
+    a -= a.swapaxes(0, 1)
+    d = np.sqrt((a**2).sum(axis=-1))
+    
+    # ENERGY
+    e = 0
+    # Infinity trap
+    e += np.cosh(r).sum()
+    # Consensus repulsor
+    e += -l1 * (e1 * r).sum()
+    # Pairwise interactions (constant repulsion + harmonic oscillator)
+    e += l2 * (-l2_rep * d + l2_att * e2 * d**2).sum()
+    
+
+    # GRADIENT
+    J = np.zeros_like(v)
+    for ix in xrange(2):
+        # Infinity trap and consensus repulsor
+        #e += np.cosh(r).sum()
+        #e += -l1 * (e1 * r).sum()
+        J[:, ix] = (np.sinh(r) - l1 * e1) * (v[:, ix] + 1e-10) / (r + 1e-10)
+
+        ## Pairwise interactions (constant repulsion + harmonic oscillator)
+        ##e += l2 * (-l2_rep * d + l2_att * e2 * d**2).sum()
+        #for i in xrange(N):
+        #    J[i, ix] += 2 * l2 * (-l2_rep * (v[i, ix] - v[:, ix]) / (d[i, :] + 1e-15) +
+        #                          2 * l2_att * e2[i, :] * (v[i, ix] - v[:, ix])).sum()
+
+        vd = np.tile(v[:, ix], (N, 1))
+        vd -= vd.T
+        J[:, ix] += 2 * l2 * (-l2_rep * vd.T / (d + 1e-15) + 2 * l2_att * e2 * vd.T).sum(axis=-1)
+
+
+    return (e, J.ravel())
+
+
+def get_distance_parameters(alim):
     from .utils.sequence import get_consensus 
-
-    alim = np.asarray(alim, 'S1')
-
     cons = get_consensus(alim)
-    N = alim.shape[0]
-    L = alim.shape[-1]
-
+    
     # Constant repulsor in the consensus/middle
     e1 = (alim != cons).mean(axis=1)
 
@@ -226,82 +157,47 @@ def cluster_force3(alim, method='Powell', plot=False):
     e2 = np.tile(alim, (alim.shape[0], 1, 1))
     e2 = 1.0 * (e2 == e2.swapaxes(0, 1)).mean(axis=2)
 
+    return e1, e2
+
+
+def cluster_force(alim, method='CG', plot=False):
+    '''Cluster sequences with physical forces
+    
+    Paramters:
+       alim (biopython alignment or numpy matrix of chars): alignment to analyze
+       method (str): minimization method (see scipy.optimize.minimize)
+       plot (bool): plot clustering
+    '''
+    import numpy as np
+    from scipy.optimize import minimize
+
+    from .utils.sequence import get_consensus 
+
+    alim = np.asarray(alim, 'S1')
+    N = alim.shape[0]
+    L = alim.shape[-1]
+
+    e1, e2 = get_distance_parameters(alim)
 
     # Minimize the energy
-    v0 = np.random.rand(N, 2).ravel()
-    def efun(v):
-        N = v.shape[0] // 2
-        v = v.reshape((N, 2))
+    v0 = np.random.rand(N, 2)
 
-        l1 = 5e-2
-        l2 = 1e-4 / N
-        l2_rep = 3.0
-        l2_att = 1e-2
-
-        r = np.sqrt((v**2).sum(axis=-1))
-        a = np.zeros((N, N, 2))
-        d = np.zeros((N, N))
-        a[:] = v
-        a -= a.swapaxes(0, 1)
-        d[:] = np.sqrt((a**2).sum(axis=-1))
-        
-        e = 0
-        
-        # Infinity trap
-        e += np.cosh(r).sum()
-
-        # Consensus repulsor
-        e += -l1 * (e1 * r).sum()
-
-        # Pairwise interactions
-        e += l2 * (- l2_rep * d + l2_att * e2 * d**2).sum()
-
-        return e
-
-    def Jefun(v):
-        '''Jacobian (gradient) of the energy function
-        
-        NOTE: it's a waste to recompute all, we should use a composite function
-        '''
-        N = v.shape[0] // 2
-        v = v.reshape((N, 2))
-
-        l1 = 5e-2
-        l2 = 1e-4 / N
-        l2_rep = 3.0
-        l2_att = 1e-2
-
-        r = np.sqrt((v**2).sum(axis=-1))
-        a = np.zeros((N, N, 2))
-        a[:] = v
-        a -= a.swapaxes(0, 1)
-        d = np.zeros((N, N))
-        d[:] = np.sqrt((a**2).sum(axis=-1))
-
-        J = np.zeros_like(v)
-        for xi in xrange(v.shape[-1]):
-            for i in xrange(v.shape[0]):
-                # One particle terms
-                # NOTE: we must regularize such that the derivative at r -> 0+ is continuous
-                J[i, xi] += (np.sinh(r[i]) - l1 * e1[i]) * (v[i, xi] + 1e-10) / (r[i] + 1e-10)
-
-                # Two-particle term
-                # NOTE: we must regularize such that there is no self-interaction
-                J[i, xi] += 2 * l2 * ((v[:, xi] - v[i, xi]) / (d[i] + 1e-10) * (-l2_rep + 2 * l2_att * d[i])).sum()
-
-        J = J.ravel()
-
-        return J
-
-
-    if method in ['Powell']:
+    if method in ['Powell', 'BFGS']:
         print method, 'not using Jacobian'
-        res = minimize(efun, v0, method=method)
-    else:
+        res = minimize(energy_function, v0.ravel(), method=method, args=(e1, e2))
+    elif method in ['BFGS-jac']:
+        print 'BFGS, using Jacobian'
+        res = minimize(energy_withgradient_function, v0.ravel(), method='BFGS', args=(e1, e2),
+                       jac=True)
+    elif method in ['CG']:
         print method, 'using Jacobian'
-        res = minimize(efun, v0, method=method, jac=Jefun)
+        res = minimize(energy_withgradient_function, v0.ravel(), method=method, args=(e1, e2),
+                       jac=True)
+    else:
+        raise ValueError('Method for minimization not found!')
 
-    v = res.x.reshape((v0.shape[0] // 2, 2))
+    v = res.x.reshape((N, 2))
+    print 'Minimal value of the function:', res.fun
 
     if plot:
         from matplotlib import cm
@@ -310,6 +206,7 @@ def cluster_force3(alim, method='Powell', plot=False):
         # Plot the force field and the scatter
         fig, ax = plt.subplots()
 
+        cons = get_consensus(alim)
         dcon = (alim != cons).sum(axis=1)
         colors = cm.jet(1.0 * dcon / dcon.max())
         ax.scatter([0], [0], s=200, edgecolor='k', facecolor='none', lw=2, zorder=-1)
@@ -319,7 +216,12 @@ def cluster_force3(alim, method='Powell', plot=False):
         ax.set_ylim(-1.04*np.abs(v[:, 1]).max(), 1.04*np.abs(v[:, 1]).max())
         sm = plt.cm.ScalarMappable(cmap=cm.jet, norm=plt.Normalize(vmin=0, vmax=dcon.max()))
         sm.set_array(dcon)
-        plt.colorbar(sm)
+        cb = plt.colorbar(sm)
+        cb.set_label('Hamming distance from consensus', rotation=270, labelpad=40)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+
+        plt.tight_layout()
         
 
     return v
