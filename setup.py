@@ -19,6 +19,6 @@ setup (name = 'clusterforce',
        author_email = "fabio.zanini@tuebingen.mpg.de",
        license = "BSD/2-clause",
        keywords = "clustering sequences force",
-       url = "http://example.com/HelloWorld/",
+       url = "https://github.com/iosonofabio/clusterforce",
        )
 
