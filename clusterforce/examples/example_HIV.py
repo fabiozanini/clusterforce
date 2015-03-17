@@ -12,8 +12,8 @@ from Bio import AlignIO
 from matplotlib import cm
 import matplotlib.pyplot as plt
 
-from pyelastic.clustering import cluster_force
-from pyelastic.utils.sequence import get_consensus
+from clusterforce.clustering import cluster_force
+from clusterforce.utils.sequence import get_consensus
 
 
 
