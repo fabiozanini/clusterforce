@@ -21,6 +21,8 @@ def cluster_force(alim, method='Powell', plot=False):
 
     from .utils.sequence import get_consensus 
 
+    alim = np.asarray(alim, 'S1')
+
     cons = get_consensus(alim)
     N = alim.shape[0]
     L = alim.shape[-1]
