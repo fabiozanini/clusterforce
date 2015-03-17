@@ -12,7 +12,7 @@ from Bio import AlignIO
 from matplotlib import cm
 import matplotlib.pyplot as plt
 
-from clusterforce.clustering import cluster_force
+from clusterforce.clustering import cluster_force3
 from clusterforce.utils.sequence import get_consensus
 
 
@@ -36,15 +36,18 @@ if __name__ == '__main__':
 
     region = 'p17'
     plot = True
-    #method = 'Powell'
-    method = 'CG'
+    methods = ['Powell', 'CG']
 
     alim = load_test_data(region=region, maxseqs=maxseqs)
     cons = get_consensus(alim)
     dcon = (alim != cons).sum(axis=1)
 
-    np.random.seed(30)
-    v = cluster_force(alim, plot=plot)
+    vs = []
+    for method in methods:
+        np.random.seed(30)
+        v = cluster_force3(alim, plot=plot, method=method)
+        plt.title(method)
+        vs.append(v)
 
 
     plt.ion()
