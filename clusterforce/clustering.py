@@ -144,23 +144,24 @@ def energy_withgradient_function(v, e1, e2):
     return (e, J.ravel())
 
 
-def get_distance_parameters(alim):
+def get_distance_parameters(alim, refseq=None):
+    '''Get distance parameters, from a reference and between the seqs'''
     from .utils.sequence import get_consensus 
-    cons = get_consensus(alim)
-    
-    # Constant repulsor in the consensus/middle
-    e1 = (alim != cons).mean(axis=1)
 
-    # Constant repulsor and elastic attractor between the sequences
-    # This fixes a reasonable distance between points because at short distances
-    # the attraction is zero (flat energy)
+    if refseq is None:
+        refseq = get_consensus(alim)
+    
+    # Distance from the reference (consensus)
+    e1 = (alim != refseq).mean(axis=1)
+
+    # Distance between the sequences
     e2 = np.tile(alim, (alim.shape[0], 1, 1))
     e2 = 1.0 * (e2 == e2.swapaxes(0, 1)).mean(axis=2)
 
     return e1, e2
 
 
-def cluster_force(alim, method='CG', plot=False):
+def cluster_force(alim, method='BFGS-jac', plot=False):
     '''Cluster sequences with physical forces
     
     Paramters:
