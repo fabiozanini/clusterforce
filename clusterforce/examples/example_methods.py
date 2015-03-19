@@ -45,7 +45,8 @@ if __name__ == '__main__':
     vs = []
     for method in methods:
         np.random.seed(30)
-        v = cluster_force(alim, plot=plot, method=method)
+        res = cluster_force(alim, plot=plot, method=method)
+        v = res['x']
         plt.title(method)
         vs.append(v)
 

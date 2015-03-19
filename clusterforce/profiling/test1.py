@@ -45,6 +45,6 @@ if __name__ == '__main__':
         np.random.seed(30)
         t0 = time.time()
         for i in xrange(reps):
-            v = cluster_force(alim, plot=plot, method=method)
+            res = cluster_force(alim, plot=plot, method=method)
         t1 = time.time()
         print reps, 'replicates run. Time per run: {:.2G} secs'.format((t1 - t0) / reps)

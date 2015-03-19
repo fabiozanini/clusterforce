@@ -10,13 +10,15 @@ import numpy as np
 
 # Functions
 def energy_function(v, e1, e2):
+    '''Energy function to minimize for the cluster-making'''
+
     # NOTE: v comes in as a flattened array, but it's a 2D vector
     N = v.shape[0] // 2
     v = v.reshape((N, 2))
 
     # Coefficients
     l1 = 5e-2           # repulsion from consensus
-    l2 = 1e-4 / N       # interactions
+    l2 = 1e-4 / (N - 1) # interactions
     l2_rep = 3.0        # -- " -- (repulsive part)
     l2_att = 1e-2       # -- " -- (elastic attraction)
 
@@ -46,6 +48,8 @@ def energy_function(v, e1, e2):
 
 
 def energy_gradient_function(v, e1, e2):
+    '''Gradient of the energy function'''
+
     # NOTE: v comes in as a flattened array, but it's a 2D vector
     N = v.shape[0] // 2
     v = v.reshape((N, 2))
@@ -93,6 +97,8 @@ def energy_gradient_function(v, e1, e2):
 
 
 def energy_withgradient_function(v, e1, e2):
+    '''Energy function + gradient for the clustering minimization'''
+
     # NOTE: v comes in as a flattened array, but it's a 2D vector
     N = v.shape[0] // 2
     v = v.reshape((N, 2))
@@ -131,11 +137,6 @@ def energy_withgradient_function(v, e1, e2):
         J[:, ix] = (np.sinh(r) - l1 * e1) * (v[:, ix] + 1e-10) / (r + 1e-10)
 
         ## Pairwise interactions (constant repulsion + harmonic oscillator)
-        ##e += l2 * (-l2_rep * d + l2_att * e2 * d**2).sum()
-        #for i in xrange(N):
-        #    J[i, ix] += 2 * l2 * (-l2_rep * (v[i, ix] - v[:, ix]) / (d[i, :] + 1e-15) +
-        #                          2 * l2_att * e2[i, :] * (v[i, ix] - v[:, ix])).sum()
-
         vd = np.tile(v[:, ix], (N, 1))
         vd -= vd.T
         J[:, ix] += 2 * l2 * (-l2_rep * vd.T / (d + 1e-15) + 2 * l2_att * e2 * vd.T).sum(axis=-1)
@@ -146,9 +147,8 @@ def energy_withgradient_function(v, e1, e2):
 
 def get_distance_parameters(alim, refseq=None):
     '''Get distance parameters, from a reference and between the seqs'''
-    from .utils.sequence import get_consensus 
-
     if refseq is None:
+        from .utils.sequence import get_consensus 
         refseq = get_consensus(alim)
     
     # Distance from the reference (consensus)
@@ -158,6 +158,17 @@ def get_distance_parameters(alim, refseq=None):
     e2 = np.tile(alim, (alim.shape[0], 1, 1))
     e2 = 1.0 * (e2 == e2.swapaxes(0, 1)).mean(axis=2)
 
+    return e1, e2
+
+
+def add_distance_parameters(alim, seq, refseq=None):
+    '''Calculate distance parameters for a new sequence'''
+    if refseq is None:
+        from .utils.sequence import get_consensus 
+        refseq = get_consensus(alim)
+
+    e1 = (seq != refseq).mean()
+    e2 = (seq != alim).mean(axis=1)
     return e1, e2
 
 
@@ -225,5 +236,38 @@ def cluster_force(alim, method='BFGS-jac', plot=False):
         plt.tight_layout()
         
 
-    return v
+    return {'x': v, 'e1e2': (e1, e2), 'method': method}
 
+
+def position_sequence(seq, v, alim, e1e2=None):
+    '''Position one sequence to the cluster according to the current force field
+    
+    Parameters:
+       seq: the sequence to add
+       v: the vector of positions for the current points
+       alim_or_e1e2 (2-tuple or matrix of char): either the alignment to calculate
+       the force field from, or the distance parameters (e1, e2)
+    '''
+    import numpy as np
+    from scipy.optimize import minimize
+
+    alim = np.asarray(alim)
+
+    if e1e2 is None:
+        e1, e2 = get_distance_parameters(np.vstack([alim, seq]))
+    else:
+        e1, e2 = e1e2
+        e1new, e2new = add_distance_parameters(alim, seq)
+        e1f = np.append(e1, e1new)
+        e2f = np.zeros((e2.shape[0] + 1, e2.shape[1] + 1), e2.dtype)
+        e2f[:e2.shape[0], :e2.shape[1]] = e2
+        e2f[-1, :-1] = e2new
+        e2f[:-1, -1] = e2new
+
+
+    # The energy function to minimize takes only the last argument now
+    u0 = np.random.rand(2)
+    efun = lambda u, e1, e2: energy_function(np.concatenate([v.ravel(), u]), e1, e2)
+    res = minimize(efun, u0, args=(e1f, e2f))
+    u = res.x
+    return u
